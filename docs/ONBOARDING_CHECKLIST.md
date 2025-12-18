@@ -81,20 +81,16 @@
   - 파일: `.env`
   - 운영에서는 반드시 `TEST_MODE=false` (또는 미설정)
 - [ ] 같은 JWT로 아래 순서대로 호출해 "끝까지" 통과하는지 확인
-  1) `GET /api/today-feature`
-  2) `GET/POST /api/roulette/status|play`
-  3) `GET/POST /api/dice/status|play`
-  4) `GET/POST /api/lottery/status|play`
-  5) `GET /api/season-pass/status`
-  6) `POST /api/season-pass/stamp`
+  1) `GET/POST /api/roulette/status|play`
+  2) `GET/POST /api/dice/status|play`
+  3) `GET/POST /api/lottery/status|play`
+  4) `GET /api/season-pass/status`
+  5) `POST /api/season-pass/stamp`
 
 ---
 
 ## 4. 핵심 도메인 학습(추천 순서)
 
-- [ ] 오늘의 Feature 결정 로직 이해
-  - 문서: `docs/03_api/03_api_overview_v1.0.md`
-  - 포인트: `/api/today-feature`, `NO_FEATURE_TODAY`, `INVALID_FEATURE_SCHEDULE`
 - [ ] 시즌패스 흐름 이해
   - 문서: `docs/03_api/03_api_season_pass_v1.0.md`
   - 포인트: stamp/claim, `NO_ACTIVE_SEASON`, auto-claim
