@@ -11,7 +11,8 @@
 - [x] 저장소 루트 확인
   - 기대: `docker-compose.yml`, `alembic.ini`, `app/`, `src/`가 보임
 - [x] 환경 파일 존재 확인
-  - 기대: `.env.example`, `.env.development`, `.env.frontend`(또는 `.env.frontend.example`) 존재
+  - 기대: `.env`(로컬/도커 실행용, gitignore), `.env.example`, `.env.development`, `.env.frontend`(또는 `.env.frontend.example`) 존재
+  - 참고: `.env`가 없으면 `docker compose`의 `env_file: .env`에서 실패할 수 있으니 `.env.example` 또는 `.env.local`을 복사해 생성
 
 ---
 
@@ -39,6 +40,7 @@
 - [x] 마이그레이션 적용 (중요: 자동 아님)
   - 명령: `docker compose exec backend alembic upgrade head`
   - 기대: 에러 없이 완료
+  - 참고: Compose 기본 DB 이름은 `MYSQL_DATABASE`(기본값 `xmas_event`)이며, 백엔드는 `DATABASE_URL`로 이 DB를 바라봄
 
 - 접속 포트(기본):
   - Backend: `http://localhost:8000/`
@@ -114,6 +116,10 @@
 ## 6. 운영/보안 체크(배포 전 필수)
 
 - [ ] 운영에서 `TEST_MODE=false` 확인
+- [ ] Docker(Compose) 기준 DB 선택이 올바른지 확인
+  - 기대: backend `DATABASE_URL`이 `.../xmas_event`를 가리킴(기본)
+  - 확인(예): `docker compose exec backend printenv | grep DATABASE_URL`
+  - 참고: 네이티브 로컬 개발 가이드에서는 `xmas_event_dev`를 사용하므로 혼동 주의
 - [ ] DB/Redis 외부 포트 노출 제한 검토
   - 문서: `docs/SECURITY_GUIDE.md`
   - 예: DB 포트를 `127.0.0.1:3307:3306`로 제한하거나 포트 제거
