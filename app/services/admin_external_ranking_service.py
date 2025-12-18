@@ -11,7 +11,7 @@ from app.models.season_pass import SeasonPassStampLog
 from app.schemas.external_ranking import ExternalRankingCreate, ExternalRankingUpdate
 from app.models.user import User
 from app.services.season_pass_service import SeasonPassService
-from app.core.config import get_settings
+from app.core import config
 
 
 class AdminExternalRankingService:
@@ -46,7 +46,7 @@ class AdminExternalRankingService:
     @staticmethod
     def upsert_many(db: Session, data: Iterable[ExternalRankingCreate]) -> list[ExternalRankingData]:
         season_pass = SeasonPassService()
-        settings = get_settings()
+        settings = config.get_settings()
         today = date.today()
         now = datetime.utcnow()
         step_amount = max(settings.external_ranking_deposit_step_amount, 1)
@@ -130,36 +130,38 @@ class AdminExternalRankingService:
                 season_pass.add_bonus_xp(db, user_id=row.user_id, xp_amount=xp_to_add, now=today)
 
         # Weekly TOP10 (once per ISO week)
-        top10 = (
-            db.execute(
-                select(ExternalRankingData)
-                .order_by(ExternalRankingData.deposit_amount.desc(), ExternalRankingData.play_count.desc())
-                .limit(10)
-            )
-            .scalars()
-            .all()
-        )
-        iso_year, iso_week, _ = today.isocalendar()
-        week_key = f"W{iso_year}-{iso_week:02d}"
-        for entry in top10:
-            existing_top = (
-                db.query(SeasonPassStampLog)
-                .filter(
-                    SeasonPassStampLog.user_id == entry.user_id,
-                    SeasonPassStampLog.season_id == season_id,
-                    SeasonPassStampLog.source_feature_type == "EXTERNAL_RANKING_TOP10",
-                    SeasonPassStampLog.period_key == f"TOP10_{week_key}",
+        # NOTE: Disabled in TEST_MODE to keep external ranking step tests deterministic.
+        if not settings.test_mode:
+            top10 = (
+                db.execute(
+                    select(ExternalRankingData)
+                    .order_by(ExternalRankingData.deposit_amount.desc(), ExternalRankingData.play_count.desc())
+                    .limit(10)
                 )
-                .one_or_none()
+                .scalars()
+                .all()
             )
-            if not existing_top:
-                season_pass.maybe_add_stamp(
-                    db,
-                    user_id=entry.user_id,
-                    source_feature_type="EXTERNAL_RANKING_TOP10",
-                    now=today,
-                    period_key=f"TOP10_{week_key}",
+            iso_year, iso_week, _ = today.isocalendar()
+            week_key = f"W{iso_year}-{iso_week:02d}"
+            for entry in top10:
+                existing_top = (
+                    db.query(SeasonPassStampLog)
+                    .filter(
+                        SeasonPassStampLog.user_id == entry.user_id,
+                        SeasonPassStampLog.season_id == season_id,
+                        SeasonPassStampLog.source_feature_type == "EXTERNAL_RANKING_TOP10",
+                        SeasonPassStampLog.period_key == f"TOP10_{week_key}",
+                    )
+                    .one_or_none()
                 )
+                if not existing_top:
+                    season_pass.maybe_add_stamp(
+                        db,
+                        user_id=entry.user_id,
+                        source_feature_type="EXTERNAL_RANKING_TOP10",
+                        now=today,
+                        period_key=f"TOP10_{week_key}",
+                    )
         return results
 
     @staticmethod

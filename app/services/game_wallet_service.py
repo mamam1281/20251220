@@ -1,7 +1,7 @@
 """Game wallet service for per-feature tokens."""
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
+from app.core import config
 from app.core.exceptions import InvalidConfigError, NotEnoughTokensError
 from app.models.game_wallet import GameTokenType, UserGameWallet
 from app.models.game_wallet_ledger import UserGameWalletLedger
@@ -42,7 +42,7 @@ class GameWalletService:
         if amount <= 0:
             raise InvalidConfigError("INVALID_TOKEN_AMOUNT")
 
-        settings = get_settings()
+        settings = config.get_settings()
         wallet = self._get_or_create_wallet(db, user_id, token_type)
 
         # In test mode, auto-top-up to avoid blocking tests/demos.

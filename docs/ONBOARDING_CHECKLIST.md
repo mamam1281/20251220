@@ -89,6 +89,51 @@
   4) `GET /api/season-pass/status`
   5) `POST /api/season-pass/stamp`
 
+### (추가) 유저플로우 스모크: 외부입금(External Ranking) → 시즌패스 영향 (필수)
+
+- [ ] (사전) JWT 발급 (유저 플로우 기준)
+  - 라우트: `POST /api/auth/token`
+  - 예시:
+    - `curl -X POST http://localhost:8000/api/auth/token -H "Content-Type: application/json" -d "{\"external_id\":\"ext-deposit-qa-001\"}"`
+  - 기대: 응답에서 `access_token` 확보
+
+- [ ] (유저) 오늘 랭킹 조회(외부랭킹 포함) 라우트 확인
+  - 라우트: `GET /api/ranking/today?top=10`
+  - 예시(Authorization 필요):
+    - `curl http://localhost:8000/api/ranking/today?top=10 -H "Authorization: Bearer <JWT>"`
+  - 기대: 응답의 `external_entries`에 외부랭킹 리스트가 포함될 수 있음
+
+- [ ] (관리자) 외부입금/이용횟수(외부 랭킹 데이터) 업서트
+  - 라우트: `POST /admin/api/external-ranking`
+  - 의미: `deposit_amount`, `play_count`는 “일일 누적 총액/총횟수”로 넣는 값이며, 서버가 이전 값 대비 증분(delta)만 계산해 시즌패스 XP에 반영
+  - 예시(테스트 유저 id=1):
+    - `curl -X POST http://localhost:8000/admin/api/external-ranking -H "Content-Type: application/json" -d "[{\"user_id\":1,\"deposit_amount\":100000,\"play_count\":0,\"memo\":\"qa\"}]"`
+    - 같은 날 재업서트는 “누적치”로 전송: `deposit_amount: 200000` 처럼 증가된 총액을 전송
+
+- [ ] 같은 유저 JWT로 시즌패스/랭킹 재조회 후 영향 확인
+  - 시즌패스 라우트: `GET /api/season-pass/status`
+    - `curl http://localhost:8000/api/season-pass/status -H "Authorization: Bearer <JWT>"`
+  - 랭킹 라우트: `GET /api/ranking/today?top=10`
+    - `curl http://localhost:8000/api/ranking/today?top=10 -H "Authorization: Bearer <JWT>"`
+  - 기대:
+    - 시즌패스: 누적 예치가 10만원 단위로 늘어날 때마다 `progress.current_xp`가 20씩 증가(기본값 기준)
+    - 랭킹: `external_entries` 정렬(예치금 desc → 이용횟수 desc → user_id asc) 반영
+  - 기본 정책(환경변수):
+    - `EXTERNAL_RANKING_DEPOSIT_STEP_AMOUNT=100000` (단위)
+    - `EXTERNAL_RANKING_DEPOSIT_XP_PER_STEP=20` (단위당 지급 XP)
+    - `EXTERNAL_RANKING_DEPOSIT_MAX_STEPS_PER_DAY=50` (0이면 무제한)
+    - `EXTERNAL_RANKING_DEPOSIT_COOLDOWN_MINUTES=0`
+  - 기대: 누적 예치가 10만원 단위로 늘어날 때마다 시즌패스 `progress.current_xp`가 20씩 증가
+- [ ] (주간) 외부랭킹 TOP10 스탬프 지급 확인
+  - 조건: 예치/횟수 정렬 기준 TOP10에 포함
+  - 기대: `season_pass_stamp_log`에 `source_feature_type=EXTERNAL_RANKING_TOP10` 1회 기록(같은 주에는 중복 지급 없음)
+
+### (추가) 시즌패스 레벨 프로그래스 바 확인 (필수)
+
+- [ ] 상단 시즌패스 바 진행률이 “현재 구간(이전 임계값~다음 임계값)” 기준으로 증가하는지 확인
+  - 확인 위치: 메인 레이아웃 상단 `시즌 패스 진행도` 바
+  - 기대: XP가 다음 임계값에 가까워질수록 0→100%로 증가하고, 레벨업 시 다시 0% 근처로 리셋
+
 ---
 
 ## 4. 핵심 도메인 학습(추천 순서)

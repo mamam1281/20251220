@@ -3,7 +3,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
+from app.core import config
 from app.models.game_wallet import GameTokenType
 from app.services.game_wallet_service import GameWalletService
 
@@ -44,7 +44,7 @@ class RewardService:
 
         if reward_amount == 0 or reward_type in {"NONE", "", None}:
             return
-        settings = get_settings()
+        settings = config.get_settings()
         xp_from_game_reward = settings.xp_from_game_reward
         season_pass = None
         if xp_from_game_reward:

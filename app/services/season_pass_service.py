@@ -6,7 +6,7 @@ from typing import Iterable
 
 from fastapi import HTTPException, status
 from sqlalchemy import and_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.models.season_pass import (
     SeasonPassConfig,
@@ -25,6 +25,23 @@ class SeasonPassService:
 
     def __init__(self) -> None:
         self.reward_service = RewardService()
+
+    def _mirror_xp_to_core_level(self, db: Session, user_id: int, delta: int, source: str, meta: dict) -> None:
+        """Best-effort mirror XP to global level system without breaking the caller session."""
+
+        try:
+            session_factory = sessionmaker(bind=db.get_bind(), expire_on_commit=False)
+            with session_factory() as mirror_db:
+                LevelXPService().add_xp(
+                    mirror_db,
+                    user_id=user_id,
+                    delta=delta,
+                    source=source,
+                    meta=meta,
+                )
+                mirror_db.commit()
+        except Exception:
+            return
 
     def _ensure_default_season(self, db: Session, today: date) -> SeasonPassConfig | None:
         """When TEST_MODE is on and no season exists, create a simple default season."""
@@ -223,16 +240,13 @@ class SeasonPassService:
         progress.last_stamp_date = today
 
         # Mirror XP to core level system (best-effort; do not block game flow)
-        try:
-            LevelXPService().add_xp(
-                db,
-                user_id=user_id,
-                delta=xp_to_add,
-                source=f"SEASON_STAMP:{source_feature_type}",
-                meta={"season_id": season.id, "period_key": key, "stamp_count": stamp_count, "xp_bonus": xp_bonus},
-            )
-        except Exception:
-            pass
+        self._mirror_xp_to_core_level(
+            db,
+            user_id=user_id,
+            delta=xp_to_add,
+            source=f"SEASON_STAMP:{source_feature_type}",
+            meta={"season_id": season.id, "period_key": key, "stamp_count": stamp_count, "xp_bonus": xp_bonus},
+        )
 
         achieved_levels = self._eligible_levels(db, season.id, progress.current_xp)
         new_levels = [level for level in achieved_levels if level.level > previous_level]
@@ -477,6 +491,8 @@ class SeasonPassService:
             "level": level,
             "source": "SEASON_PASS_MANUAL_CLAIM",
         }
+        db.commit()
+        db.refresh(reward_log)
         try:
             self.reward_service.deliver(
                 db,
@@ -485,11 +501,10 @@ class SeasonPassService:
                 reward_amount=level_row.reward_amount,
                 meta=reward_meta,
             )
+            db.commit()
         except Exception:
             # Manual claim should still record the claim even if delivery fails; retry externally.
-            pass
-        db.commit()
-        db.refresh(reward_log)
+            db.rollback()
 
         return {
             "level": reward_log.level,
@@ -532,21 +547,18 @@ class SeasonPassService:
         progress.current_xp += xp_amount
         db.add(progress)
 
-        # Mirror XP to core level system (best-effort)
-        try:
-            LevelXPService().add_xp(
-                db,
-                user_id=user_id,
-                delta=xp_amount,
-                source="SEASON_BONUS_XP",
-                meta={"season_id": season.id},
-            )
-        except Exception:
-            pass
-
         achieved_levels = self._eligible_levels(db, season.id, progress.current_xp)
-        new_levels = [level for level in achieved_levels if level.level > previous_level]
+        # Defensive: avoid processing duplicate level rows
+        seen_levels: set[int] = set()
+        new_levels: list[SeasonPassLevel] = []
+        for lvl in achieved_levels:
+            if lvl.level in seen_levels:
+                continue
+            seen_levels.add(lvl.level)
+            if lvl.level > previous_level:
+                new_levels.append(lvl)
         rewards: list[dict] = []
+        delivery_queue: list[dict] = []
 
         for level in new_levels:
             reward_logged = db.execute(
@@ -570,24 +582,13 @@ class SeasonPassService:
                     claimed_at=datetime.utcnow(),
                 )
                 db.add(reward_log)
-                reward_meta = {
-                    "season_id": season.id,
-                    "level": level.level,
-                    "source": "SEASON_PASS_AUTO_CLAIM",
-                    "trigger": "BONUS_XP",
-                    "xp_added": xp_amount,
-                }
-                try:
-                    self.reward_service.deliver(
-                        db,
-                        user_id=user_id,
-                        reward_type=level.reward_type,
-                        reward_amount=level.reward_amount,
-                        meta=reward_meta,
-                    )
-                except Exception:
-                    # Reward delivery failure should not block XP flow; rely on logs for retry.
-                    pass
+                delivery_queue.append(
+                    {
+                        "reward_type": level.reward_type,
+                        "reward_amount": level.reward_amount,
+                        "level": level.level,
+                    }
+                )
                 rewards.append(
                     {
                         "level": level.level,
@@ -602,8 +603,43 @@ class SeasonPassService:
         if achieved_levels:
             progress.current_level = max(progress.current_level, max(level.level for level in achieved_levels))
 
+        # 1) Commit XP/progress + reward logs first (must not be affected by reward delivery failures)
         db.commit()
         db.refresh(progress)
+
+        # 2) Mirror to core level system (best-effort, separate transaction)
+        try:
+            LevelXPService().add_xp(
+                db,
+                user_id=user_id,
+                delta=xp_amount,
+                source="SEASON_BONUS_XP",
+                meta={"season_id": season.id},
+            )
+            db.commit()
+        except Exception:
+            db.rollback()
+
+        # 3) Deliver rewards (best-effort, separate transaction per reward)
+        for item in delivery_queue:
+            reward_meta = {
+                "season_id": season.id,
+                "level": item["level"],
+                "source": "SEASON_PASS_AUTO_CLAIM",
+                "trigger": "BONUS_XP",
+                "xp_added": xp_amount,
+            }
+            try:
+                self.reward_service.deliver(
+                    db,
+                    user_id=user_id,
+                    reward_type=item["reward_type"],
+                    reward_amount=item["reward_amount"],
+                    meta=reward_meta,
+                )
+                db.commit()
+            except Exception:
+                db.rollback()
 
         leveled_up = progress.current_level > previous_level
         return {

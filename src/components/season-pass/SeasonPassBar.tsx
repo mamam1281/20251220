@@ -9,9 +9,22 @@ const SeasonPassBar: React.FC = () => {
 
   const progressPercent = useMemo(() => {
     if (!data) return 0;
-    const totalXp = data.next_level_xp || 1;
-    const clampedXp = Math.min(Math.max(data.current_xp, 0), totalXp);
-    return Math.min(100, Math.round((clampedXp / totalXp) * 100));
+    const currentXp = data.current_xp ?? 0;
+    const nextThreshold = data.next_level_xp ?? 0;
+
+    const achievedThresholds = (data.levels ?? [])
+      .map((level) => level.required_xp)
+      .filter((xp) => typeof xp === "number" && !Number.isNaN(xp) && xp <= currentXp);
+
+    const prevThreshold = achievedThresholds.length > 0 ? Math.max(...achievedThresholds) : 0;
+    const upper = Math.max(nextThreshold, prevThreshold);
+
+    if (upper <= prevThreshold) {
+      return currentXp >= upper ? 100 : 0;
+    }
+
+    const clampedXp = Math.min(Math.max(currentXp, prevThreshold), upper);
+    return Math.min(100, Math.round(((clampedXp - prevThreshold) / (upper - prevThreshold)) * 100));
   }, [data]);
 
   const label = useMemo(() => {
