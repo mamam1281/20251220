@@ -8,22 +8,22 @@
 
 ## 0. 현재 상태 확인 (필수)
 
-- [ ] 저장소 루트 확인
+- [x] 저장소 루트 확인
   - 기대: `docker-compose.yml`, `alembic.ini`, `app/`, `src/`가 보임
-- [ ] 환경 파일 존재 확인
-  - 기대: `.env`, `.env.development`, `.env.frontend.local` 존재
+- [x] 환경 파일 존재 확인
+  - 기대: `.env.example`, `.env.development`, `.env.frontend`(또는 `.env.frontend.example`) 존재
 
 ---
 
 ## 1. 로컬 사전점검 (필수)
 
-- [ ] Docker 설치 및 동작 확인 (Docker 트랙 선택 시 필수)
+- [x] Docker 설치 및 동작 확인 (Docker 트랙 선택 시 필수)
   - 명령: `docker --version`, `docker compose version`
   - 기대: 버전 출력, compose가 v2 계열
-- [ ] Node/NPM 확인
+- [x] Node/NPM 확인
   - 명령: `node --version`, `npm --version`
   - 기대: Node 18+, npm 10+ 권장
-- [ ] Python 확인
+- [x] Python 확인
   - 명령: `python --version`
   - 기대: Python 3.11+
 
@@ -33,10 +33,10 @@
 
 ### 트랙 A) Docker Compose (권장: DB/Redis까지 한번에)
 
-- [ ] 컨테이너 빌드/기동
+- [x] 컨테이너 빌드/기동
   - 명령: `docker compose up -d --build`
   - 기대: `xmas-db`, `xmas-backend`, `xmas-frontend`, `xmas-nginx` 등이 Up
-- [ ] 마이그레이션 적용 (중요: 자동 아님)
+- [x] 마이그레이션 적용 (중요: 자동 아님)
   - 명령: `docker compose exec backend alembic upgrade head`
   - 기대: 에러 없이 완료
 
@@ -67,20 +67,20 @@
 
 ## 3. 스모크 테스트 (필수)
 
-- [ ] Backend 헬스 확인
+- [x] Backend 헬스 확인
   - URL: `http://localhost:8000/` 또는 `http://localhost:8000/health`
-- [ ] Swagger 확인
+- [x] Swagger 확인
   - URL: `http://localhost:8000/docs`
-- [ ] 토큰 발급(유저 자동 생성)
+- [x] 토큰 발급(유저 자동 생성)
   - 예시:
     - `curl -X POST http://localhost:8000/api/auth/token -H "Content-Type: application/json" -d "{\"external_id\":\"test-qa-999\"}"`
 
 ### (추가) 도메인 플로우 스모크: 3개 게임 + 시즌패스
 
-- [ ] (권장) 로컬 QA에서는 Backend `TEST_MODE=true`로 토큰 자동 보충 활성화
+- [x] (권장) 로컬 QA에서는 Backend `TEST_MODE=true`로 토큰 자동 보충 활성화
   - 파일: `.env`
   - 운영에서는 반드시 `TEST_MODE=false` (또는 미설정)
-- [ ] 같은 JWT로 아래 순서대로 호출해 "끝까지" 통과하는지 확인
+- [x] 같은 JWT로 아래 순서대로 호출해 "끝까지" 통과하는지 확인
   1) `GET/POST /api/roulette/status|play`
   2) `GET/POST /api/dice/status|play`
   3) `GET/POST /api/lottery/status|play`
