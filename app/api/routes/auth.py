@@ -71,6 +71,9 @@ def issue_token(payload: TokenRequest, request: Request, db: Session = Depends(g
         user.last_login_at = datetime.utcnow()
         user.last_login_ip = client_ip
 
+        # Ensure PK is assigned for newly created users before referencing user.id
+        db.flush()
+
         # Insert login event log
         db.add(
             UserEventLog(
